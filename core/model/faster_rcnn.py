@@ -1,5 +1,16 @@
 ### https://github.com/rowanz/r2c/blob/master/utils/detector.py
 
+import torch
+import torch.nn as nn
+import torch.nn.parallel
+from torch.nn import functional as F
+
+from torchvision.models import resnet
+from torchvision.layers import ROIAlign
+import torch.utils.model_zoo as model_zoo
+
+from vcr_util.pytorch_misc import Flattener, pad_sequence
+
 class SimpleDetector(nn.Module):
     def __init__(self, pretrained=True, average_pool=True, semantic=True, final_dim=1024):
         """
@@ -9,7 +20,7 @@ class SimpleDetector(nn.Module):
         """
         super(SimpleDetector, self).__init__()
 
-        backbone = resnet.resnet50(pretrained=true)
+        backbone = resnet.resnet50(pretrained=True)
       
         for i in range(2, 4):
             getattr(backbone, 'layer%d' % i)[0].conv1.stride = (2, 2)
@@ -49,11 +60,11 @@ class SimpleDetector(nn.Module):
 
 
     def forward(self,
-                images: torch.Tensor,
-                boxes: torch.Tensor,
-                box_mask: torch.LongTensor,
-                classes: torch.Tensor = None,
-                segms: torch.Tensor = None,
+                images,
+                boxes,
+                box_mask,
+                classes,
+                segms,
                 ):
         """
         :param images: [batch_size, 3, im_height, im_width]
@@ -61,7 +72,9 @@ class SimpleDetector(nn.Module):
         :param box_mask: [batch_size, max_num_objects] Mask for whether or not each box is OK
         :return: object reps [batch_size, max_num_objects, dim]
         """
-        # [batch_size, 2048, im_height // 32, im_width // 32
+        ## Move classes to CUDA, the others moved before in net.py
+        classes = classes.to(torch.device("cuda"))
+
         img_feats = self.backbone(images)
         box_inds = box_mask.nonzero()
         assert box_inds.shape[0] > 0
@@ -81,9 +94,6 @@ class SimpleDetector(nn.Module):
 
         feats_to_downsample = post_roialign
         roi_aligned_feats = self.obj_downsample(feats_to_downsample)
-
-        print("ROI ALIGNED FEATS:", roi_aligned_feats)
-        print("ROI ALIGNED FEATS shape:", roi_aligned_feats.shape)
 
         # Reshape into a padded sequence - this is expensive and annoying but easier to implement and debug...
         obj_reps = pad_sequence(roi_aligned_feats, box_mask.sum(1).tolist())

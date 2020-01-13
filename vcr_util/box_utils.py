@@ -5,7 +5,6 @@ import scipy
 import warnings
 from torchvision.datasets.folder import default_loader
 from torchvision.transforms import functional
-from config import USE_IMAGENET_PRETRAINED
 
 
 ##### Image
@@ -13,16 +12,7 @@ def load_image(img_fn):
     """Load the specified image and return a [H,W,3] Numpy array.
     """
     return default_loader(img_fn)
-    # # Load image
-    # image = skimage.io.imread(img_fn)
-    # # If grayscale. Convert to RGB for consistency.
-    # if image.ndim != 3:
-    #     image = skimage.color.gray2rgb(image)
-    # # If has an alpha channel, remove it for consistency
-    # if image.shape[-1] == 4:
-    #     image = image[..., :3]
-    # return image
-
+   
 
 # Let's do 16x9
 # Two common resolutions: 16x9 and 16/6 -> go to 16x8 as that's simple
@@ -64,11 +54,5 @@ def resize_image(image, desired_width=768, desired_height=384, random_pad=False)
     return image, window, scale, padding
 
 
-if USE_IMAGENET_PRETRAINED:
-    def to_tensor_and_normalize(image):
-        return functional.normalize(functional.to_tensor(image), mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))
-else:
-    # For COCO pretrained
-    def to_tensor_and_normalize(image):
-        tensor255 = functional.to_tensor(image) * 255
-        return functional.normalize(tensor255, mean=(102.9801, 115.9465, 122.7717), std=(1, 1, 1))
+def to_tensor_and_normalize(image):
+    return functional.normalize(functional.to_tensor(image), mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225))

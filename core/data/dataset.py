@@ -6,13 +6,18 @@
 
 from core.data.data_utils import tokenize
 from core.data.data_utils import proc_img_feat, proc_ques
+from keras.preprocessing.sequence import pad_sequences
 
 import numpy as np
-import glob, json, torch, time
+import glob, json, torch, time, os
 import torch.utils.data as Data
-from os import path 
 from copy import deepcopy
-
+from vcr_util.box_utils import load_image, resize_image, to_tensor_and_normalize
+from vcr_util.mask_utils import make_mask
+from allennlp.data.fields import TextField, ListField, LabelField, SequenceLabelField, ArrayField, MetadataField
+from allennlp.data.instance import Instance
+from allennlp.data.dataset import Batch
+from transformers import BertTokenizer
 
 class DataSet(Data.Dataset):
     def __init__(self, __C):
@@ -21,39 +26,59 @@ class DataSet(Data.Dataset):
         coco = json.load(open(__C.COCO_PATH, 'r')) 
         self.coco_objects = ['__background__'] + [x['name'] for k, x in sorted(coco.items(), key=lambda x: int(x[0]))]
         self.coco_obj_to_ind = {o: i for i, o in enumerate(self.coco_objects)}
-
         self.items = json.load(open(__C.QAR_PATH['train'], 'r')) 
-
-
-        """
-        # Loading qa list
-        self.ques_list = []
-
-        for i in  self.items:
-            imgpath = self.__C.IMG_FEAT_PATH['train']  + str(i['img_fn']) + '.npz'
-            if path.exists(imgpath):
-                "File exists. adding..."
-                self.ques_list +=  [i]
-
-        self.data_size = self.ques_list.__len__()
-        print('== Dataset size:', self.data_size)
-
-        # Tokenize
-        self.token_to_ix, self.pretrained_emb = tokenize(self.items)
-        self.token_to_ix_ans, self.pretrained_emb_ans= tokenize(self.items)
-        self.token_size = self.token_to_ix.__len__()
-     
-        print("i2w len: ", len(self.i2w))
-        print('Finished. Token vocab size: ', self.token_size)
-        print('')
-        """
-
+        
 
 
     def __getitem__(self, index):
+        max_token_length = 32
+        instance_dict = {}
 
         item = deepcopy(self.items[index])
-        print("item: ", item)
+        question_str = item['question']
+        reason_str = item['answer']
+
+        output_dir = './core/bert'
+        #tokenizer = BertTokenizer.from_pretrained(output_dir)
+        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+
+
+        encoded_qa_token_ids = tokenizer.encode(
+                        question_str,                      
+                        add_special_tokens = True 
+                   )
+
+        encoded_reason_token_ids = tokenizer.encode(
+                        reason_str,                      
+                        add_special_tokens = True 
+                   )
+
+        encoded_qa_token_ids = pad_sequences([encoded_qa_token_ids], maxlen=max_token_length, dtype="long", 
+                          value=0, truncating="post", padding="post")
+
+        encoded_reason_token_ids = pad_sequences([encoded_reason_token_ids], maxlen=max_token_length, dtype="long", 
+                          value=0, truncating="post", padding="post")
+
+        # Create attention masks
+        attention_qa_masks = []
+        attention_reason_masks = []
+
+        # Create a mask of 1s for each token followed by 0s for padding
+        for seq in encoded_qa_token_ids:
+            seq_mask = [float(i>0) for i in seq]
+            attention_qa_masks.append(seq_mask) 
+        
+        # Create a mask of 1s for each token followed by 0s for padding
+        for seq in encoded_reason_token_ids:
+            seq_mask = [float(i>0) for i in seq]
+            attention_reason_masks.append(seq_mask) 
+        
+
+        qa_token_ids = torch.LongTensor(encoded_qa_token_ids) 
+        reason_token_ids = torch.LongTensor(encoded_reason_token_ids) 
+        attention_qa_masks = torch.LongTensor(attention_qa_masks) 
+        attention_reason_masks = torch.LongTensor(attention_reason_masks) 
+
         ###################################################################
        
         dets2use = np.ones(len(item['objects']), dtype=bool)
@@ -62,14 +87,14 @@ class DataSet(Data.Dataset):
 
         ###################################################################
         # Load image now and rescale it. Might have to subtract the mean and whatnot here too.
-        image = load_image(os.path.join(__C.VCR_IMAGES_DIR, item['img_fn']))
+        image = load_image(os.path.join(self.__C.VCR_IMAGES_PATH, item['img_fn']))
         image, window, img_scale, padding = resize_image(image, random_pad=True)
         image = to_tensor_and_normalize(image)
         c, h, w = image.shape
 
         ###################################################################
         # Load boxes.
-        with open(os.path.join(__C.VCR_IMAGES_DIR, item['metadata_fn']), 'r') as f:
+        with open(os.path.join(self.__C.VCR_IMAGES_PATH, item['metadata_fn']), 'r') as f:
             metadata = json.load(f)
 
         # [nobj, 14, 14]
@@ -89,7 +114,6 @@ class DataSet(Data.Dataset):
         segms = np.concatenate((np.ones((1, 14, 14), dtype=np.float32), segms), 0)
         obj_labels = [self.coco_obj_to_ind['__background__']] + obj_labels
 
-        instance_dict = {}
         instance_dict['segms'] = ArrayField(segms, padding_value=0)
         instance_dict['objects'] = ListField([LabelField(x, skip_indexing=True) for x in obj_labels])
 
@@ -102,45 +126,52 @@ class DataSet(Data.Dataset):
         instance_dict['boxes'] = ArrayField(boxes, padding_value=-1)
 
         instance = Instance(instance_dict)
-        instance.index_fields(self.vocab)
-        print("image returned:", image.shape)
-        print("image name: ",item['img_fn'])
-        return image, instance
+        return image, instance, qa_token_ids, reason_token_ids, attention_qa_masks, attention_reason_masks
 
-    def getpairmanual(self, idx):
-        
-        # For code safety
-        img_feat_iter = np.zeros(1)
-        ques_ix_iter = np.zeros(1)
-        ans_ix_iter = np.zeros(1)
-
-        # Load the run data from list
-        ques = self.ques_list[idx]
-
-        # Process image feature from (.npz) file
-        imgpath = str(ques['img_fn']) + '.npz'
-        imgpath = self.__C.IMG_FEAT_PATH['train'] + imgpath
-
-        img_feat = np.load(imgpath, allow_pickle=True)
-        img_feat = img_feat['arr_0'].tolist()['obj_reps']
-        rs_x = img_feat.shape[1]
-        rs_y = img_feat.shape[2]
-        img_feat = img_feat.view(rs_x, rs_y) 
-        img_feat = img_feat.detach().numpy()
-
-        img_feat_iter = proc_img_feat(img_feat, self.__C.IMG_FEAT_PAD_SIZE)
-
-        # Process question
-        ques_ix_iter = proc_ques(ques, self.token_to_ix, self.__C.MAX_TOKEN, 'question')
-
-        # Process answer
-        ans_ix_iter = proc_ques(ques, self.token_to_ix_ans, self.__C.MAX_TOKEN, 'answer')
-
-
-        return torch.from_numpy(img_feat_iter), \
-               torch.from_numpy(ques_ix_iter), \
-               torch.from_numpy(ans_ix_iter)
 
 
     def __len__(self):
         return len(self.items)
+
+
+def collate_fn(data, to_gpu=False):
+    """Creates mini-batch tensors
+    """
+    images, instances, qas, reasons, attention_qa_masks, attention_reason_masks = zip(*data)
+    qas = torch.stack(qas, 0)
+    reasons = torch.stack(reasons, 0)
+    attention_qa_masks = torch.stack(attention_qa_masks, 0)
+    attention_reason_masks = torch.stack(attention_reason_masks, 0)
+
+    images = torch.stack(images, 0)
+    batch = Batch(instances)
+    td = batch.as_tensor_dict()
+
+    td['box_mask'] = torch.all(td['boxes'] >= 0, -1).long()
+    td['images'] = images
+    td['qas'] = qas
+    td['reasons'] = reasons
+    td['attention_qa_masks'] = attention_qa_masks
+    td['attention_reason_masks'] = attention_reason_masks
+
+    return td
+
+
+class TheLoader(torch.utils.data.DataLoader):
+    """
+    Iterates through the data, filtering out None,
+     but also loads everything as a (cuda) variable
+    """
+
+    @classmethod
+    def from_dataset(cls, data, batch_size=3, num_workers=6, num_gpus=1, **kwargs):
+        loader = cls(
+            dataset=data,
+            batch_size=batch_size, #* num_gpus,
+            shuffle=True,
+            num_workers=num_workers,
+            collate_fn=lambda x: collate_fn(x, to_gpu=True),
+            pin_memory=False,
+            **kwargs,
+        )
+        return loader

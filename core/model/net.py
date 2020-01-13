@@ -10,10 +10,8 @@ from core.model.mca import MCA_ED
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-
-
-
-
+from core.model.faster_rcnn import SimpleDetector 
+from transformers import BertTokenizer, BertForSequenceClassification, BertModel
 
 
 # -------------------------
@@ -21,55 +19,48 @@ import torch
 # -------------------------
 
 class Net(nn.Module):
-    def __init__(self, __C, pretrained_emb, pretrained_emb_ans, token_size, output_size):
+    def __init__(self, __C, vocab_size=30000):
         super(Net, self).__init__()
 
-        self.embedding = nn.Embedding(
-            num_embeddings=token_size,
-            embedding_dim=__C.WORD_EMBED_SIZE
-        )
+        output_dir = './core/bert'
 
-        self.embeddingout = nn.Embedding(
-            num_embeddings= token_size,
-            embedding_dim=__C.WORD_EMBED_SIZE
-        )
-
-        # Loading the GloVe embedding weights
-        if __C.USE_GLOVE:
-            self.embedding.weight.data.copy_(torch.from_numpy(pretrained_emb))
-            self.embeddingout.weight.data.copy_(torch.from_numpy(pretrained_emb_ans))
-
-
-        self.lstm = nn.LSTM(
-            input_size=__C.WORD_EMBED_SIZE,
-            hidden_size=__C.HIDDEN_SIZE,
-            num_layers=1,
-            batch_first=True
-        )
-
-
+        self.detector = SimpleDetector(pretrained=True, average_pool=True, final_dim=2048)
+        #self.bert =  BertForSequenceClassification.from_pretrained(output_dir)
+        self.bert = BertModel.from_pretrained('bert-base-uncased')
+       
+       
         self.img_feat_linear = nn.Linear(
             __C.IMG_FEAT_SIZE,
             __C.HIDDEN_SIZE
         )
 
-        self.backbone = MCA_ED(__C)
-
-        self.attflat_img = AttFlat(__C)
-        self.attflat_lang = AttFlat(__C)
-
-        self.proj_norm = LayerNorm(__C.FLAT_OUT_SIZE)
-        #self.proj = nn.Linear(__C.FLAT_OUT_SIZE, answer_size)
-
-        self.lstmreasoning = nn.LSTM(
-            input_size=__C.WORD_EMBED_SIZE + 64,
+        self.lstm = nn.LSTM(
+            input_size= 768,
             hidden_size=__C.HIDDEN_SIZE,
             num_layers=1,
             batch_first=True
         )
 
-        self.reasonlinear = nn.Linear(__C.HIDDEN_SIZE, token_size)
+
+        self.backbone = MCA_ED(__C)
+        self.attflat_img = AttFlat(__C)
+        self.attflat_lang = AttFlat(__C)
+        self.proj_norm = LayerNorm(__C.FLAT_OUT_SIZE)
+
+        self.output_feat_linear = nn.Linear(
+            768,
+            __C.FLAT_OUT_SIZE
+        )
+
+        self.backbone2 = MCA_ED(__C)
+
+        self.output_proj_linear = nn.Linear(
+            __C.HIDDEN_SIZE,
+            vocab_size
+        )
+
         self.softmax = nn.LogSoftmax(dim=1)
+        
 
     def forward(self, 
                 images: torch.Tensor,
@@ -77,8 +68,24 @@ class Net(nn.Module):
                 segms: torch.Tensor,
                 boxes: torch.Tensor,
                 box_mask: torch.LongTensor,
-                ques_ix, ans_ix):
+                qas: torch.Tensor,
+                reasons: torch.Tensor,
+                attention_qa_masks: torch.Tensor,
+                attention_reason_masks: torch.Tensor
+                ):
         
+
+        ## Move everything to CUDA
+        images = images.to(torch.device("cuda"))
+        boxes = boxes.to(torch.device("cuda"))
+        box_mask = box_mask.to(torch.device("cuda"))
+        segms = segms.to(torch.device("cuda"))
+        attention_qa_masks = attention_qa_masks.to(torch.device("cuda"))
+        attention_reason_masks = attention_reason_masks.to(torch.device("cuda"))
+        qas = qas.to(torch.device("cuda"))
+        reasons = reasons.to(torch.device("cuda"))
+
+
         max_len = int(box_mask.sum(1).max().item())
         objects = objects[:, :max_len]
         box_mask = box_mask[:, :max_len]
@@ -87,27 +94,31 @@ class Net(nn.Module):
         
         obj_reps = self.detector(images=images, boxes=boxes, box_mask=box_mask, classes=objects, segms=segms)
         img_feat = obj_reps['obj_reps']
+    
+        tokens_tensor = qas.view(qas.shape[0], qas.shape[2])
+        attention_qa_masks = attention_qa_masks.view(attention_qa_masks.shape[0], attention_qa_masks.shape[2])
+        
+        reasons_tensor = reasons.view(reasons.shape[0], reasons.shape[2])
+        attention_reason_masks = attention_reason_masks.view(attention_reason_masks.shape[0], attention_reason_masks.shape[2])
 
-        #img_feat = img_feat.view(1, img_feat.shape[0], img_feat.shape[1]) 
-        ques_ix = ques_ix.view(1, ques_ix.shape[0]) 
-        ans_ix = ans_ix.view(1, ans_ix.shape[0]) 
-
-        #print("ques_ix.shape: ", ques_ix.shape)
-        #print("img_feat.shape: ", img_feat.shape)
-        #print("ans_ix.shape: ", ans_ix.shape)
+        # Predict hidden states features for each layer
+        with torch.no_grad():
+            outputs = self.bert(tokens_tensor, token_type_ids= attention_qa_masks)
+            encoded_layers = outputs[0]
+        lang_feat = encoded_layers
 
         # Make mask
-        lang_feat_mask = self.make_mask(ques_ix.unsqueeze(2))
+        lang_feat_mask = self.make_mask(lang_feat)
         img_feat_mask = self.make_mask(img_feat)
 
         # Pre-process Language Feature
-        lang_feat = self.embedding(ques_ix)
         lang_feat, _ = self.lstm(lang_feat)
 
         # Pre-process Image Feature
         img_feat = self.img_feat_linear(img_feat)
-
-
+        
+        
+        ######## FIRST BACKBONE FOR QA & IMAGE
         # Backbone Framework
         lang_feat, img_feat = self.backbone(
             lang_feat,
@@ -115,7 +126,6 @@ class Net(nn.Module):
             lang_feat_mask,
             img_feat_mask
         )
-
 
         lang_feat = self.attflat_lang(
             lang_feat,
@@ -126,25 +136,37 @@ class Net(nn.Module):
             img_feat,
             img_feat_mask
         )
+       
 
         proj_feat = lang_feat + img_feat
         proj_feat = self.proj_norm(proj_feat)
-        proj_feat = proj_feat.view(1,16, 64)
 
-        ans_feat = self.embedding(ans_ix)
+        with torch.no_grad():
+            outputs = self.bert(reasons_tensor, token_type_ids = attention_reason_masks)
+            encoded_layers = outputs[0]
+        output_feat = encoded_layers
 
-        cat_feat = torch.cat((ans_feat, proj_feat), 2)
+      
+        ######## SECOND BACKBONE FOR REASONING
+        proj_feat = proj_feat.view(proj_feat.shape[0], 1 , proj_feat.shape[1])
+        output_feat = self.output_feat_linear(output_feat)
+        
+        # Make mask
+        proj_feat_mask = self.make_mask(proj_feat)
+        output_feat_mask = self.make_mask(output_feat)
 
-        reason_feat, _ = self.lstmreasoning(cat_feat)
-        #print("reason_feat shape:", reason_feat.shape)
+        # Backbone Framework
+        output_feat, proj_feat = self.backbone2(
+            output_feat,
+            proj_feat,
+            output_feat_mask,
+            proj_feat_mask
+        )
 
-        output = self.reasonlinear(reason_feat)
-        #print("output shape:", output.shape)
-       
-        output = self.softmax(output[0])
-        #print("output shape after softmax:", output.shape)
-
-        return output
+        output = self.output_proj_linear(output_feat)
+        result = self.softmax(output)
+    
+        return result, reasons_tensor
 
     # Masking
     def make_mask(self, feature):

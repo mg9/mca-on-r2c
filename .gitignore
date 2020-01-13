@@ -1,3 +1,4 @@
 **/datasets/r2c/vcr1images
 *.DS_Store
 **/__pycache__
+**/.vscode

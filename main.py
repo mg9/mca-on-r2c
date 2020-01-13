@@ -21,9 +21,9 @@ def parse_args():
                       type=str, required=True)
 
     parser.add_argument('--MODEL', dest='MODEL',
-                      choices=['small', 'large'],
-                      help='{small, large}',
-                      default='small', type=str)
+                      choices=['r2c'],
+                      help='{r2c}',
+                      default='r2c', type=str)
 
     parser.add_argument('--SPLIT', dest='TRAIN_SPLIT',
                       choices=['train', 'train+val', 'train+val+vg'],
@@ -132,9 +132,9 @@ if __name__ == '__main__':
     __C.add_args(args_dict)
     __C.proc()
 
-    print('Hyper Parameters:')
-    print(__C)
-
+    #print('Hyper Parameters:')
+    #print(__C)
+    print(" ")
     __C.check_path()
 
     execution = Execution(__C)

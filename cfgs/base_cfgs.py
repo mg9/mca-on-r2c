@@ -139,7 +139,7 @@ class Cfgs(PATH):
 
         # Flatten the last hidden to vector with {n} attention glimpses
         self.FLAT_GLIMPSES = 1
-        self.FLAT_OUT_SIZE = 1024
+        self.FLAT_OUT_SIZE = 512
 
 
         # --------------------------
