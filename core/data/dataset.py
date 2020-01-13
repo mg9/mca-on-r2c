@@ -4,8 +4,6 @@
 # Written by Yuhao Cui https://github.com/cuiyuhao1996
 # --------------------------------------------------------
 
-from core.data.data_utils import tokenize
-from core.data.data_utils import proc_img_feat, proc_ques
 from keras.preprocessing.sequence import pad_sequences
 
 import numpy as np

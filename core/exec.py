@@ -1,7 +1,6 @@
 from core.data.dataset import DataSet, TheLoader
 from core.model.net import Net
 from core.model.optim import get_optim, adjust_lr
-from core.data.data_utils import shuffle_list
 
 import os, json, torch, datetime, pickle, copy, shutil, time
 import numpy as np
