@@ -7,7 +7,6 @@ import os, json, torch, datetime, pickle, copy, shutil, time
 import numpy as np
 import torch.nn as nn
 import torch.utils.data as Data
-from vcr_util.vcr import VCR, VCRLoader
 
 class Execution:
     def __init__(self, __C):

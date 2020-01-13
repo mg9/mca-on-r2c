@@ -5,19 +5,15 @@ class PATH:
 
         self.DATASET_PATH = './datasets/r2c/'
         self.FEATURE_PATH = './datasets/r2c/'
-        self.COCO_PATH = './datasets/r2c/'
-        self.VCR_IMAGES_PATH = './datasets/r2c/vcr1images'
+        self.COCO_PATH = './datasets/r2c/cocoontology.json'
+        self.VCR_IMAGES_PATH = './datasets/r2c/vcr1images/'
         self.init_path()
 
 
     def init_path(self):
 
-        self.IMG_FEAT_PATH = {
-            'train': self.FEATURE_PATH + 'train2019/'
-        }
-
         self.QAR_PATH = {
-            'train': self.DATASET_PATH + 'r2c_qar.json'
+            'train': self.DATASET_PATH + 'r2c_qar_train.json'
         }
 
         self.CKPTS_PATH = './ckpts/'

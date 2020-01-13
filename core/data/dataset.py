@@ -11,6 +11,7 @@ import numpy as np
 import glob, json, torch, time
 import torch.utils.data as Data
 from os import path 
+from copy import deepcopy
 
 
 class DataSet(Data.Dataset):
@@ -49,10 +50,10 @@ class DataSet(Data.Dataset):
 
 
 
-  def __getitem__(self, index):
+    def __getitem__(self, index):
 
         item = deepcopy(self.items[index])
-
+        print("item: ", item)
         ###################################################################
        
         dets2use = np.ones(len(item['objects']), dtype=bool)
@@ -142,4 +143,4 @@ class DataSet(Data.Dataset):
 
 
     def __len__(self):
-        return self.data_size
+        return len(self.items)
