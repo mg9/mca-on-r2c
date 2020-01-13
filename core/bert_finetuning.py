@@ -25,7 +25,7 @@ else:
 print('Loading BERT tokenizer...')
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=True)
 
-jsfile = json.load(open("/home/fatihkaantuncer/mca-on-r2c/datasets/r2c/r2c_qar.json", 'r'))
+jsfile = json.load(open("./datasets/r2c/r2c_qar.json", 'r'))
 
 qars = []
 labels = []

@@ -23,7 +23,7 @@ else:
     print('No GPU available, using the CPU instead.')
     device = torch.device("cpu")
 
-path = '/home/fatihkaantuncer/mca-on-r2c/models/bert_finetuned.pt'
+path = './core/models/bert_finetuned.pt'
 
 model = BertForSequenceClassification.from_pretrained(
     "bert-base-uncased", # Use the 12-layer BERT model, with an uncased vocab.
@@ -48,7 +48,7 @@ tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=Tru
 
 # Create sentence and label lists
 
-jsfile = json.load(open("/home/fatihkaantuncer/mca-on-r2c/datasets/r2c/r2c_qar_test.json", 'r'))
+jsfile = json.load(open("./datasets/r2c/r2c_qar_test.json", 'r'))
 
 sentences = []
 labels = []
