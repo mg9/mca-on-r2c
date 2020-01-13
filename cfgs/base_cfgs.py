@@ -156,7 +156,7 @@ class Cfgs(PATH):
         self.LR_DECAY_LIST = [10, 12]
 
         # Max training epoch
-        self.MAX_EPOCH = 13
+        self.MAX_EPOCH = 2
 
         # Gradient clip
         # (default: -1 means not using)
@@ -183,7 +183,7 @@ class Cfgs(PATH):
 
 
     def proc(self):
-        assert self.RUN_MODE in ['train', 'val', 'test']
+        assert self.RUN_MODE in ['train', 'val', 'test', 'pred']
 
         # ------------ Devices setup
         os.environ['CUDA_VISIBLE_DEVICES'] = self.GPU

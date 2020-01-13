@@ -1,4 +1,4 @@
-from core.data.load_data import DataSet
+from core.data.dataset import DataSet
 from core.model.net import Net
 from core.model.optim import get_optim, adjust_lr
 from core.data.data_utils import shuffle_list
@@ -7,6 +7,7 @@ import os, json, torch, datetime, pickle, copy, shutil, time
 import numpy as np
 import torch.nn as nn
 import torch.utils.data as Data
+from vcr_util.vcr import VCR, VCRLoader
 
 class Execution:
     def __init__(self, __C):
@@ -17,6 +18,29 @@ class Execution:
 
 
     def train(self, dataset):
+        dataloader = Data.DataLoader(
+            dataset,
+            batch_size=self.__C.BATCH_SIZE,
+            shuffle=False,
+            num_workers=self.__C.NUM_WORKERS,
+            pin_memory=self.__C.PIN_MEM,
+            drop_last=True
+        )
+        for step, (
+                image,
+                instance
+        ) in enumerate(dataloader):
+            print("image is: ", image)
+            print("instance is: ", instance)
+
+
+    """def train(self, dataset):
+
+        train, val, test = VCR.splits(only_use_relevant_dets=True)
+
+        loader_params = {'batch_size': 1, 'num_gpus':1, 'num_workers':num_workers}
+        train_loader = VCRLoader.from_dataset(train, **loader_params)
+
 
         # Obtain needed information
         token_size = dataset.token_size
@@ -150,7 +174,7 @@ class Execution:
             loss_sum = 0
             grad_norm = np.zeros(len(named_params))
 
-
+    """
     def run(self, run_mode):
         if run_mode == 'train':
             self.train(self.dataset)
@@ -161,19 +185,74 @@ class Execution:
         elif run_mode == 'test':
             self.eval(self.dataset)
 
+        elif run_mode == 'pred':
+            self.loadModel(self.dataset)
+
         else:
             exit(-1)
 
 
-    def loadModel(path):
+    def loadModel(self, dataset):
         
+        path = self.__C.CKPTS_PATH + 'ckpt_35137398/epoch2.pkl' 
+
+        print("loaded path: ", path)
+        # Obtain needed information
+        token_size = dataset.token_size
+        pretrained_emb = dataset.pretrained_emb
+        pretrained_emb_ans = dataset.pretrained_emb_ans
+        data_size = dataset.data_size
+
+        fixed_ans_size = 16
+       
+
+        # Define the MCAN model
+        net = Net(
+            self.__C,
+            pretrained_emb,
+            pretrained_emb_ans,
+            token_size,
+            fixed_ans_size
+        )
+        net.cuda()
         # Load the network parameters
         print('Loading ckpt {}'.format(path))
         ckpt = torch.load(path)
         print('Finish!')
         net.load_state_dict(ckpt['state_dict'])
 
-        # Load the optimizer paramters
-        optim = get_optim(self.__C, net, data_size, ckpt['lr_base'])
-        optim._step = int(data_size / self.__C.BATCH_SIZE * self.__C.CKPT_EPOCH)
-        optim.optimizer.load_state_dict(ckpt['optimizer'])
+        print('Finished!')
+
+        # Iteration
+        for x in range(len(dataset)):
+            img_feat_iter, ques_ix_iter, ans_ix_iter =  dataset.getpairmanual(x)
+
+            img_feat_iter = img_feat_iter.cuda()
+            ques_ix_iter = ques_ix_iter.cuda()
+            ans_ix_iter = ans_ix_iter.cuda()
+
+            pad = torch.tensor([1]).cuda()
+            ans_ix_iter = torch.cat((ans_ix_iter, pad), 0)
+            ans_ix_iter = torch.cat((pad, ans_ix_iter), 0)
+    
+
+            pred = net(
+                img_feat_iter,
+                ques_ix_iter,
+                ans_ix_iter[:-2]
+            )
+            
+            pred_np = pred.cpu().data.numpy()
+            pred_argmax = np.argmax(pred_np, axis=1)
+
+            print("dataset i2w: " , dataset.i2w)
+            qa = []
+            for q in ques_ix_iter:
+                q =  q.item()
+                qa.append(dataset.i2w[q])
+            print("qa: ", qa)
+
+            outreas = []
+            for p in pred_argmax:
+                outreas.append(dataset.i2w[p])
+            print("reason: ", outreas)

@@ -12,46 +12,8 @@ import torch.nn.functional as F
 import torch
 
 
-# ------------------------------
-# ---- Flatten the sequence ----
-# ------------------------------
 
-class AttFlat(nn.Module):
-    def __init__(self, __C):
-        super(AttFlat, self).__init__()
-        self.__C = __C
 
-        self.mlp = MLP(
-            in_size=__C.HIDDEN_SIZE,
-            mid_size=__C.FLAT_MLP_SIZE,
-            out_size=__C.FLAT_GLIMPSES,
-            dropout_r=__C.DROPOUT_R,
-            use_relu=True
-        )
-
-        self.linear_merge = nn.Linear(
-            __C.HIDDEN_SIZE * __C.FLAT_GLIMPSES,
-            __C.FLAT_OUT_SIZE
-        )
-
-    def forward(self, x, x_mask):
-        att = self.mlp(x)
-        att = att.masked_fill(
-            x_mask.squeeze(1).squeeze(1).unsqueeze(2),
-            -1e9
-        )
-        att = F.softmax(att, dim=1)
-
-        att_list = []
-        for i in range(self.__C.FLAT_GLIMPSES):
-            att_list.append(
-                torch.sum(att[:, :, i: i + 1] * x, dim=1)
-            )
-
-        x_atted = torch.cat(att_list, dim=1)
-        x_atted = self.linear_merge(x_atted)
-
-        return x_atted
 
 
 # -------------------------
@@ -109,9 +71,24 @@ class Net(nn.Module):
         self.reasonlinear = nn.Linear(__C.HIDDEN_SIZE, token_size)
         self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, img_feat, ques_ix, ans_ix):
+    def forward(self, 
+                images: torch.Tensor,
+                objects: torch.LongTensor,
+                segms: torch.Tensor,
+                boxes: torch.Tensor,
+                box_mask: torch.LongTensor,
+                ques_ix, ans_ix):
         
-        img_feat = img_feat.view(1, img_feat.shape[0], img_feat.shape[1]) 
+        max_len = int(box_mask.sum(1).max().item())
+        objects = objects[:, :max_len]
+        box_mask = box_mask[:, :max_len]
+        boxes = boxes[:, :max_len]
+        segms = segms[:, :max_len]
+        
+        obj_reps = self.detector(images=images, boxes=boxes, box_mask=box_mask, classes=objects, segms=segms)
+        img_feat = obj_reps['obj_reps']
+
+        #img_feat = img_feat.view(1, img_feat.shape[0], img_feat.shape[1]) 
         ques_ix = ques_ix.view(1, ques_ix.shape[0]) 
         ans_ix = ans_ix.view(1, ans_ix.shape[0]) 
 
@@ -174,4 +151,45 @@ class Net(nn.Module):
         return (torch.sum(torch.abs(feature), dim=-1) == 0).unsqueeze(1).unsqueeze(2)
 
 
+
+# ------------------------------
+# ---- Flatten the sequence ----
+# ------------------------------
+
+class AttFlat(nn.Module):
+    def __init__(self, __C):
+        super(AttFlat, self).__init__()
+        self.__C = __C
+
+        self.mlp = MLP(
+            in_size=__C.HIDDEN_SIZE,
+            mid_size=__C.FLAT_MLP_SIZE,
+            out_size=__C.FLAT_GLIMPSES,
+            dropout_r=__C.DROPOUT_R,
+            use_relu=True
+        )
+
+        self.linear_merge = nn.Linear(
+            __C.HIDDEN_SIZE * __C.FLAT_GLIMPSES,
+            __C.FLAT_OUT_SIZE
+        )
+
+    def forward(self, x, x_mask):
+        att = self.mlp(x)
+        att = att.masked_fill(
+            x_mask.squeeze(1).squeeze(1).unsqueeze(2),
+            -1e9
+        )
+        att = F.softmax(att, dim=1)
+
+        att_list = []
+        for i in range(self.__C.FLAT_GLIMPSES):
+            att_list.append(
+                torch.sum(att[:, :, i: i + 1] * x, dim=1)
+            )
+
+        x_atted = torch.cat(att_list, dim=1)
+        x_atted = self.linear_merge(x_atted)
+
+        return x_atted
 

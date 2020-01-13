@@ -5,7 +5,8 @@ class PATH:
 
         self.DATASET_PATH = './datasets/r2c/'
         self.FEATURE_PATH = './datasets/r2c/'
-
+        self.COCO_PATH = './datasets/r2c/'
+        self.VCR_IMAGES_PATH = './datasets/r2c/vcr1images'
         self.init_path()
 
 
@@ -16,7 +17,7 @@ class PATH:
         }
 
         self.QAR_PATH = {
-            'train': self.DATASET_PATH + 'r2c_qar.jsonl'
+            'train': self.DATASET_PATH + 'r2c_qar.json'
         }
 
         self.CKPTS_PATH = './ckpts/'

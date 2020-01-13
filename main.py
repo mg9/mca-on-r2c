@@ -16,7 +16,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='MCAN Args')
 
     parser.add_argument('--RUN', dest='RUN_MODE',
-                      choices=['train', 'val', 'test'],
+                      choices=['train', 'val', 'test', 'pred'],
                       help='{train, val, test}',
                       type=str, required=True)
 
