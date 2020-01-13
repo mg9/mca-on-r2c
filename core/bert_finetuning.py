@@ -445,6 +445,6 @@ plt.ylabel("Loss")
 plt.show()
 """
 
-path = '/home/fatihkaantuncer/mca-on-r2c/models/bert_finetuned.pt'
+path = './core/models/bert_finetuned.pt'
 torch.save(model.state_dict(), path)
 print("Model saved to: ", path)
