@@ -21,7 +21,6 @@ class PATH:
         if 'ckpts' not in os.listdir('./'):
             os.mkdir('./ckpts')
 
-
     def check_path(self):
         print('Checking dataset ...')
      

@@ -25,22 +25,42 @@ class Execution:
         net.cuda()
         net.train()
 
-        loss_fn = torch.nn.NLLLoss().cuda()
-        
-        #Create checkpoint
+         #Create checkpoint
         if ('ckpt_' + self.__C.VERSION) in os.listdir(self.__C.CKPTS_PATH):
             shutil.rmtree(self.__C.CKPTS_PATH + 'ckpt_' + self.__C.VERSION)
         os.mkdir(self.__C.CKPTS_PATH + 'ckpt_' + self.__C.VERSION)
-
         loader_params = {'batch_size': 16, 'num_gpus':1}
         dataloader = TheLoader.from_dataset(dataset, **loader_params)
-
-        
-        optim = get_optim(self.__C, net, len(dataloader))
-        start_epoch = 0
         loss_sum = 0
         named_params = list(net.named_parameters())
         grad_norm = np.zeros(len(named_params))
+        
+        loss_fn = torch.nn.NLLLoss().cuda()
+        
+        # Load checkpoint if resume training
+        if self.__C.RESUME:
+            print(' ========== Resume training')
+            path = self.__C.CKPTS_PATH + \
+                       'ckpt_' + self.__C.CKPT_VERSION + \
+                       '/epoch' + str(self.__C.CKPT_EPOCH) + '.pkl'
+
+            # Load the network parameters
+            print('Loading ckpt {}'.format(path))
+            ckpt = torch.load(path)
+            print('Finish!')
+            net.load_state_dict(ckpt['state_dict'])
+
+            # Load the optimizer paramters
+            optim = get_optim(self.__C, net, len(dataloader), ckpt['lr_base'])
+            optim._step = int(len(dataloader) / self.__C.BATCH_SIZE * self.__C.CKPT_EPOCH)
+            optim.optimizer.load_state_dict(ckpt['optimizer'])
+
+            start_epoch = self.__C.CKPT_EPOCH
+        else:
+            optim = get_optim(self.__C, net, len(dataloader))
+            start_epoch = 0
+
+       
 
         for epoch in range(start_epoch, self.__C.MAX_EPOCH):
             print("Training epoch...",  epoch)
@@ -58,7 +78,7 @@ class Execution:
                 goldsentence = goldsentence[:, 1:]
                 x = x[:,:31,:]
                 pred_argmax = np.argmax(x.cpu().data.numpy(), axis=2)
-             
+
 
                 loss = loss_fn(x.permute(0,2,1), goldsentence)
                 loss /= self.__C.GRAD_ACCU_STEPS
@@ -113,8 +133,11 @@ class Execution:
                 '.pkl'
             )
 
-            print("A sample prediction: ", pred_argmax)
-            print("Checkpoint saved.")
+           
+            print("Gold sentence: " + str(goldsentence.cpu().data) + '\n\n')
+            print("A sample prediction: " + pred_argmax + '\n\n')
+            print("Checkpoint saved. " +'\n\n')
+
 
     
    

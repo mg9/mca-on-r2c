@@ -156,7 +156,7 @@ class Cfgs(PATH):
         self.LR_DECAY_LIST = [10, 12]
 
         # Max training epoch
-        self.MAX_EPOCH = 2
+        self.MAX_EPOCH = 15
 
         # Gradient clip
         # (default: -1 means not using)

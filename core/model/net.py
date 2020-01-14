@@ -103,7 +103,7 @@ class Net(nn.Module):
 
         # Predict hidden states features for each layer
         with torch.no_grad():
-            outputs = self.bert(tokens_tensor, token_type_ids= attention_qa_masks)
+            outputs = self.bert(tokens_tensor, token_type_ids= None, attention_mask = attention_qa_masks)
             encoded_layers = outputs[0]
         lang_feat = encoded_layers
 
