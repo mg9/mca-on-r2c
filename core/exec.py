@@ -134,9 +134,9 @@ class Execution:
             )
 
            
-            print("Gold sentence: " + str(goldsentence.cpu().data) + '\n\n')
-            print("A sample prediction: " + pred_argmax + '\n\n')
-            print("Checkpoint saved. " +'\n\n')
+            print("Gold sentence: " , str(goldsentence.cpu().data))
+            print("A sample prediction: ", pred_argmax )
+            print("Checkpoint saved. " )
 
 
     

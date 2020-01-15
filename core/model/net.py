@@ -142,7 +142,7 @@ class Net(nn.Module):
         proj_feat = self.proj_norm(proj_feat)
 
         with torch.no_grad():
-            outputs = self.bert(reasons_tensor, token_type_ids = attention_reason_masks)
+            outputs = self.bert(reasons_tensor, token_type_ids = None, attention_mask = attention_reason_masks)
             encoded_layers = outputs[0]
         output_feat = encoded_layers
 
