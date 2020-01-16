@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.utils.data as Data
 from vcr_util.pytorch_misc import time_batch
 from torch.autograd import Variable
+from transformers import BertTokenizer, BertModel, BertForMaskedLM
 
 class Execution:
     def __init__(self, __C):
@@ -160,65 +161,59 @@ class Execution:
 
     def loadModel(self, dataset):
         
-        path = self.__C.CKPTS_PATH + 'ckpt_35137398/epoch2.pkl' 
-
+        path = self.__C.CKPTS_PATH + 'ckpt_1305312/epoch5.pkl' 
         print("loaded path: ", path)
-        # Obtain needed information
-        token_size = dataset.token_size
-        pretrained_emb = dataset.pretrained_emb
-        pretrained_emb_ans = dataset.pretrained_emb_ans
-        data_size = dataset.data_size
 
-        fixed_ans_size = 16
-       
-
-        # Define the MCAN model
         net = Net(
             self.__C,
-            pretrained_emb,
-            pretrained_emb_ans,
-            token_size,
-            fixed_ans_size
         )
+
         net.cuda()
+
         # Load the network parameters
-        print('Loading ckpt {}'.format(path))
         ckpt = torch.load(path)
-        print('Finish!')
         net.load_state_dict(ckpt['state_dict'])
+        loader_params = {'batch_size': 8, 'num_gpus':1}
+        dataloader = TheLoader.from_dataset(dataset, **loader_params)
+        tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+        g = open("golds.txt", "w")
+        p = open("preds.txt", "w")
 
-        print('Finished!')
+        
+        for b, (time_per_batch, batch) in enumerate(time_batch(dataloader)):
+                x, goldsentence = net(**batch)
+                goldsentence = goldsentence[:, 1:]
+                x = x[:,:31,:]
+                pred_argmax = np.argmax(x.cpu().data.numpy(), axis=2)
+                for i in range(pred_argmax.shape[0]):
+                    pred = pred_argmax[i,:]
+                    gold = goldsentence[i,:]
+                    pred_tokens = tokenizer.convert_ids_to_tokens(pred)
+                    gold_tokens = tokenizer.convert_ids_to_tokens(gold)
+                    pred_string = listToString(pred_tokens)
+                    gold_string = listToString(gold_tokens)
 
-        # Iteration
-        for x in range(len(dataset)):
-            img_feat_iter, ques_ix_iter, ans_ix_iter =  dataset.getpairmanual(x)
+                    encoded_pred_string = str(pred_string) #.encode('utf-8').strip()
+                    encoded_gold_string = str(gold_string) #.encode('utf-8').strip()
+                    print(encoded_pred_string)
+                    print(encoded_gold_string)
+                    p.write(encoded_pred_string + '\n')
+                    g.write(encoded_gold_string + '\n')
 
-            img_feat_iter = img_feat_iter.cuda()
-            ques_ix_iter = ques_ix_iter.cuda()
-            ans_ix_iter = ans_ix_iter.cuda()
+        
+        g.close()
+        p.close()
 
-            pad = torch.tensor([1]).cuda()
-            ans_ix_iter = torch.cat((ans_ix_iter, pad), 0)
-            ans_ix_iter = torch.cat((pad, ans_ix_iter), 0)
+
     
-
-            pred = net(
-                img_feat_iter,
-                ques_ix_iter,
-                ans_ix_iter[:-2]
-            )
+        
+# Function to convert   
+def listToString(s):  
+    
+    # initialize an empty string 
+    str1 = " " 
+    
+    # return string   
+    return (str1.join(s).encode('utf-8').strip()) 
             
-            pred_np = pred.cpu().data.numpy()
-            pred_argmax = np.argmax(pred_np, axis=1)
-
-            print("dataset i2w: " , dataset.i2w)
-            qa = []
-            for q in ques_ix_iter:
-                q =  q.item()
-                qa.append(dataset.i2w[q])
-            print("qa: ", qa)
-
-            outreas = []
-            for p in pred_argmax:
-                outreas.append(dataset.i2w[p])
-            print("reason: ", outreas)
+  

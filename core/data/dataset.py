@@ -24,8 +24,9 @@ class DataSet(Data.Dataset):
         coco = json.load(open(__C.COCO_PATH, 'r')) 
         self.coco_objects = ['__background__'] + [x['name'] for k, x in sorted(coco.items(), key=lambda x: int(x[0]))]
         self.coco_obj_to_ind = {o: i for i, o in enumerate(self.coco_objects)}
-        self.items = json.load(open(__C.QAR_PATH['train'], 'r')) 
-        
+        #self.items = json.load(open(__C.QAR_PATH['train'], 'r')) 
+        self.items = json.load(open(__C.QAR_PATH['test'], 'r'))  
+
 
 
     def __getitem__(self, index):

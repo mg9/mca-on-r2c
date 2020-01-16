@@ -13,7 +13,8 @@ class PATH:
     def init_path(self):
 
         self.QAR_PATH = {
-            'train': self.DATASET_PATH + 'r2c_qar_train.json'
+            'train': self.DATASET_PATH + 'r2c_qar_train.json',
+            'test': self.DATASET_PATH + 'r2c_qar_test.json',
         }
 
         self.CKPTS_PATH = './ckpts/'
